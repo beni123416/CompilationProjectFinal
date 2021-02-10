@@ -1,0 +1,334 @@
+/*************/
+/* Based on a template by Oren Ish-Shalom */
+/*************/
+
+
+/*************/
+/* IMPORTS */
+/*************/
+
+import java_cup.runtime.*;
+import ast.*;
+import java.util.List;
+import java.util.LinkedList;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
+
+parser code
+{:
+	public Lexer lexer;
+	public int curLine = 0;
+	public int prevLine = 0;
+
+	public Parser(Lexer lexer)
+	{
+		super(lexer);
+		this.lexer = lexer;
+
+	}
+
+	// Override default error reporting in parser
+	public void report_error(String message, Object info)
+	{
+		String error = "Syntax error at line ";
+		if(message.equals("0") || message.equals("Syntax error")) {
+		
+			error +=  String.valueOf(lexer.getLine());
+		}
+		else {
+			error += message;
+		}
+		error += " of input.";
+
+		System.err.println(error);
+		System.exit(1);
+	}
+	public void debug(String str){
+		//System.out.println(str );
+	}
+:}
+
+/************************/
+/* CUSTOMIZE CUP PARSER */
+/************************/
+
+scan with
+{:
+	Symbol s;
+	int line = 0; 
+	String lineStr;
+	boolean inComment = false;
+	int commentStartLineNum = 0;
+    try {
+	s = lexer.next_token();
+	while(s.sym == sym.START_COMMENT || s.sym == sym.END_COMMENT){
+		if(s.sym == sym.START_COMMENT && !inComment){
+			inComment = true;
+			commentStartLineNum = lexer.getLine();
+		}else if(s.sym == sym.END_COMMENT){
+			inComment = false;
+		}
+		s = lexer.next_token();
+	}
+	
+	this.prevLine = this.curLine;
+	this.curLine = lexer.getLine();
+	
+	
+	/*System.out.print(s.sym);
+	System.out.print("[");
+	System.out.print(this.curLine);
+ 	System.out.print(":");
+ 	System.out.print(lexer.getCharPos());
+	System.out.print("] ");
+	System.out.print(sym.terminalNames[s.sym]);
+	if (s.value != null) {
+		System.out.print("( ");
+		System.out.print(s.value);
+		System.out.print(" )");
+	 }
+	 System.out.print("\n");*/
+	 
+	 // System.out.println("prev = " + this.prevLine + " cur = " + this.curLine);
+	 
+	 if(inComment && s.sym == sym.EOF) {
+	 	 lineStr = String.valueOf(commentStartLineNum );
+   	     report_error( lineStr, null); 
+	 } 
+	 
+	return s;
+     } catch (java.lang.Error e) {
+   	     report_error("0", null); 
+         return null;
+     }
+:};
+
+/*************/
+/* TERMINALS */
+/*************/
+terminal PUBLIC;
+terminal CLASS;
+terminal LPAREN;
+terminal RPAREN;
+terminal L_CURLY_BRACKET;
+terminal R_CURLY_BRACKET;
+terminal STATIC;
+terminal MAIN;
+terminal VOID;
+terminal STRING;
+terminal L_BRACKET;
+terminal R_BRACKET;
+terminal EXTENDS;
+terminal SEMICOLON;
+terminal COMMA;
+terminal RETURN;
+terminal INT;
+terminal int NUMBER;
+terminal BOOLEAN;
+terminal IF;
+terminal WHILE;
+terminal PRINTLN;
+terminal ELSE;
+terminal EQUALS;
+terminal PLUS;
+terminal MINUS;
+terminal MULT;
+terminal LT;
+terminal AND;
+terminal LENGTH;
+terminal TRUE;
+terminal FALSE;
+terminal THIS;
+terminal NEW;
+terminal String ID;
+terminal NOT;
+
+
+terminal PARANTHESES;
+terminal NEW_OBJECT;
+terminal NEW_INT_ARRAY;
+terminal METHOD_CALL;
+terminal ARRAY_LENGTH;
+terminal ARRAY_ACCESS;
+terminal ASSIGN_ARRAY;
+terminal ASSIGN;
+terminal DOT;
+
+terminal END_VARS;
+
+terminal REF_TYPE;
+terminal END_COMMENT;
+terminal START_COMMENT;
+/*****************/
+/* NON TERMINALS */
+/*****************/
+non terminal Program prog;
+non terminal MainClass mainClass;
+non terminal ClassDecl ClassDeclaration ;
+non terminal Statement statement;
+non terminal VarDecl VarDeclaration;
+non terminal VarDecl fieldDeclaration;
+non terminal MethodDecl MethodDeclaration;
+non terminal AstType Type;
+non terminal Expr Expression;
+
+non terminal LinkedList<Expr> ArgsExpr;
+non terminal LinkedList<Expr> ExpressionsList;
+non terminal LinkedList<VarDecl> Vars;
+non terminal LinkedList<VarDecl> fields;										
+non terminal LinkedList<FormalArg> FormalArgs;
+non terminal LinkedList<FormalArg> FormalList;
+non terminal LinkedList<Statement> BlockStatement;
+non terminal String Extends;
+non terminal LinkedList<MethodDecl> Methods;
+non terminal LinkedList<ClassDecl> Classes;
+
+
+/***********************/
+/* OPERATOR PRECEDENCE */
+/***********************/
+
+precedence left COMMA;
+
+precedence  right ASSIGN ,ASSIGN_ARRAY;
+	
+	
+precedence left AND ;
+precedence left LT;
+precedence left PLUS, MINUS;
+precedence left MULT;
+
+precedence right NEW_OBJECT, NEW_INT_ARRAY;
+
+precedence right NOT;
+
+precedence left PARANTHESES , L_BRACKET ,DOT ;
+
+
+
+/************************/
+/* INITIAL NON TERMINAL */
+/************************/
+start with prog;
+
+/********************/
+/* PRODUCTION RULES */
+/********************/
+
+prog ::= mainClass:main Classes:classes								{: debug("prog "); RESULT = new Program(main, classes); :};
+
+
+Classes ::= ClassDeclaration:className Classes:list  					{:debug("Classes "); list.addFirst(className); RESULT = list; :}
+			| /* empty */  											{: RESULT = new LinkedList<ClassDecl>(); :}
+;
+
+
+
+mainClass ::= CLASS ID:name L_CURLY_BRACKET PUBLIC STATIC VOID MAIN LPAREN STRING L_BRACKET R_BRACKET ID:argsName RPAREN L_CURLY_BRACKET statement:mainStatement R_CURLY_BRACKET R_CURLY_BRACKET 
+{:debug("mainClass "); RESULT = new MainClass(name, argsName, mainStatement); :};
+
+
+
+
+ClassDeclaration ::= CLASS ID:name Extends:superClass L_CURLY_BRACKET fields:variables Methods:methods R_CURLY_BRACKET 
+{: debug("ClassDeclaration  ") ;  RESULT = new ClassDecl(name, superClass==null ? null : superClass, variables, methods); :};
+
+
+Extends ::= EXTENDS ID:id			 {:debug("Extends "); RESULT = id; :}
+			| /* empty */ 	 {: RESULT = null ; :}
+;
+
+
+
+Methods ::= MethodDeclaration:method Methods:list  					{:debug("Methods "); list.addFirst(method); RESULT = list; :}
+			| /* empty */  											{: RESULT = new LinkedList<MethodDecl>(); :}
+;	
+
+fieldDeclaration	::=	Type:type ID:Id SEMICOLON {: debug("fieldDeclaration"); RESULT = new VarDecl(type, Id, lexer.getLine()); :} 
+;
+
+
+fields ::= fieldDeclaration:var fields:list  											{:debug("fields"); list.addFirst(var); RESULT = list; :} 
+		| /* empty */  															{: RESULT = new LinkedList<VarDecl>(); :} %prec END_VARS
+;
+
+
+
+MethodDeclaration ::= PUBLIC Type:returnType ID:name LPAREN FormalArgs:formals RPAREN L_CURLY_BRACKET Vars:variables BlockStatement:blockStatement RETURN Expression:ret SEMICOLON R_CURLY_BRACKET 
+{:debug("MethodDeclaration "); RESULT = new MethodDecl(returnType, name, formals, variables, blockStatement, ret, lexer.getLine()); :};
+
+VarDeclaration	::=	Type:type ID:Id SEMICOLON {: debug("VarDeclaration "); RESULT = new VarDecl(type, Id, lexer.getLine()); :} 
+;
+
+
+Vars ::=  Vars:list  VarDeclaration:var											{:debug("Vars "); list.addLast(var); RESULT = list; :} 
+		| /* empty */  															{: RESULT = new LinkedList<VarDecl>(); :} %prec END_VARS
+;
+
+FormalArgs ::= Type:type ID:Id FormalList:list									{:debug("FormalArgs  "); list.addFirst(new FormalArg(type,Id, lexer.getLine())); RESULT = list; :}
+				| /* empty */  					  								{: RESULT = new LinkedList<FormalArg>(); :}
+;
+
+FormalList ::= COMMA Type:type ID:Id FormalList:list	 						{:debug("FormalList  "); list.addFirst(new FormalArg(type,Id, lexer.getLine())); RESULT = list; :}
+				| /* empty */           										{: RESULT = new LinkedList<FormalArg>(); :}
+;
+
+
+
+Type ::= INT L_BRACKET R_BRACKET 	{:debug("Type  ARR  "); RESULT = new IntArrayAstType(); :}
+		| BOOLEAN		 			{:debug("Type  BOOLEAN  "); RESULT = new BoolAstType(); :}
+		| INT 						{:debug("Type  INT  "); RESULT = new IntAstType(); :}
+		| ID:Id 					{:debug("Type  ID  "); RESULT = new RefType(Id);:} %prec REF_TYPE
+;
+
+
+statement ::= L_CURLY_BRACKET BlockStatement:blockList R_CURLY_BRACKET						{: debug("block  "); RESULT = new BlockStatement(blockList); :}
+			| IF LPAREN	Expression:cond RPAREN statement:s1 ELSE statement:s2				{: debug("if  ");  RESULT = new IfStatement(cond, s1, s2); :}
+			| WHILE LPAREN Expression:cond RPAREN statement:body				    		{:debug("WHILE  "); RESULT = new WhileStatement(cond, body); :}
+			| PRINTLN LPAREN Expression:arg RPAREN SEMICOLON 								{: debug("PRINTLN  "); RESULT = new SysoutStatement(arg); :}
+			| ID:lv EQUALS Expression:rv SEMICOLON 											{:debug("ASSIGN  ");  RESULT = new AssignStatement(lv, rv); :} %prec ASSIGN 
+			| ID:lv L_BRACKET Expression:index R_BRACKET EQUALS Expression:rv SEMICOLON	 	{: debug("ASSIGN_ARRAY  ");   RESULT = new AssignArrayStatement(lv, index, rv); :} %prec ASSIGN_ARRAY 
+;
+
+    
+BlockStatement ::= statement:s BlockStatement:list  										{:debug("BlockStatement   "); list.addFirst(s); RESULT = list; :}
+				| /* empty */  																{: RESULT = new LinkedList<Statement>(); :}
+;
+
+
+Expression ::=    Expression:e1 PLUS Expression:e2 											{:debug("PLUS   "); RESULT = new AddExpr(e1, e2); :}
+         		| Expression:e1 MINUS Expression:e2											{:debug("MINUS  ");  RESULT = new SubtractExpr(e1, e2); :}
+        		| Expression:e1 MULT Expression:e2											{:debug("MULT ");  RESULT = new MultExpr(e1, e2); :}
+        		| Expression:e1 AND Expression:e2											{: debug("AND   "); RESULT = new AndExpr(e1,e2); :} 
+        		| Expression:e1 LT Expression:e2											{:debug("LT  ");  RESULT = new LtExpr(e1,e2); :} 
+        		| Expression:e L_BRACKET Expression:index R_BRACKET 						{:debug("ARRAY_ACCESS  ");  RESULT = new ArrayAccessExpr(e,index); :} %prec ARRAY_ACCESS	
+        		| Expression:e DOT LENGTH 													{:debug("ARRAY_LENGTH  ");  RESULT = new ArrayLengthExpr(e); :} %prec ARRAY_LENGTH		
+        		| Expression:owner DOT ID:methodId LPAREN ArgsExpr:list RPAREN 				{:debug("METHOD_CALL  ");  RESULT = new MethodCallExpr(owner, methodId,list); :} %prec METHOD_CALL		
+        		| NUMBER:n																	{:debug("IntegerLiteral  ");  RESULT = new IntegerLiteralExpr(n); :}
+        		| TRUE 																		{:debug("True  ");  RESULT = new TrueExpr(); :}
+        		| FALSE 																	{:debug("False  ");  RESULT = new FalseExpr(); :}
+        		| ID:Id																		{:debug("Expression   ID ");  RESULT = new IdentifierExpr(Id);; :}
+        		| THIS 																		{: debug("THIS  "); RESULT = new ThisExpr(); :}
+        		| NEW INT L_BRACKET Expression:ExprLength R_BRACKET							{:debug("NEW_INT_ARRAY	");  RESULT = new NewIntArrayExpr(ExprLength); :} %prec NEW_INT_ARRAY	 	
+        		| NEW ID:Id LPAREN RPAREN 													{: debug(" NEW_OBJECT "); RESULT = new NewObjectExpr(Id); :} %prec NEW_OBJECT		
+        		| NOT Expression:notExpr 													{:debug("Not  ");  RESULT = new NotExpr(notExpr); :}
+        		| LPAREN Expression:e RPAREN												{: debug("PARANTHESES "); RESULT = e; :} %prec PARANTHESES		
+; 
+
+ArgsExpr ::= Expression:e ExpressionsList:list  											{:debug("ArgsExpr   ");  list.addFirst(e); RESULT = list; :}
+			| /* empty */  					  											    {:debug("MINUS  ");  RESULT = new LinkedList<Expr>(); :}
+;
+
+ExpressionsList ::= COMMA Expression:e ExpressionsList:list	 								{: debug("ExpressionsList   "); list.addFirst(e); RESULT = list; :}
+					| /* empty */           												{: RESULT = new LinkedList<Expr>(); :}
+;
+
+
+
+
+
+
+
+
+
+
